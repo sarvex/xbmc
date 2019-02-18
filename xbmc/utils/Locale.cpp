@@ -1,21 +1,9 @@
 /*
- *      Copyright (C) 2015 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2015-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "Locale.h"
@@ -24,16 +12,14 @@
 const CLocale CLocale::Empty;
 
 CLocale::CLocale()
-  : m_valid(false),
-    m_language(),
+  : m_language(),
     m_territory(),
     m_codeset(),
     m_modifier()
 { }
 
 CLocale::CLocale(const std::string& language)
-  : m_valid(false),
-    m_language(),
+  : m_language(),
     m_territory(),
     m_codeset(),
     m_modifier()
@@ -42,8 +28,7 @@ CLocale::CLocale(const std::string& language)
 }
 
 CLocale::CLocale(const std::string& language, const std::string& territory)
-  : m_valid(false),
-    m_language(language),
+  : m_language(language),
     m_territory(territory),
     m_codeset(),
     m_modifier()
@@ -52,8 +37,7 @@ CLocale::CLocale(const std::string& language, const std::string& territory)
 }
 
 CLocale::CLocale(const std::string& language, const std::string& territory, const std::string& codeset)
-  : m_valid(false),
-    m_language(language),
+  : m_language(language),
     m_territory(territory),
     m_codeset(codeset),
     m_modifier()
@@ -62,8 +46,7 @@ CLocale::CLocale(const std::string& language, const std::string& territory, cons
 }
 
 CLocale::CLocale(const std::string& language, const std::string& territory, const std::string& codeset, const std::string& modifier)
-  : m_valid(false),
-    m_language(language),
+  : m_language(language),
     m_territory(territory),
     m_codeset(codeset),
     m_modifier(modifier)
@@ -71,8 +54,7 @@ CLocale::CLocale(const std::string& language, const std::string& territory, cons
   Initialize();
 }
 
-CLocale::~CLocale()
-{ }
+CLocale::~CLocale() = default;
 
 CLocale CLocale::FromString(const std::string& locale)
 {
@@ -170,6 +152,28 @@ bool CLocale::Matches(const std::string& locale) const
   return true;
 }
 
+std::string CLocale::FindBestMatch(const std::set<std::string>& locales) const
+{
+  std::string bestMatch = "";
+  int bestMatchRank = -1;
+
+  for (auto const& locale : locales)
+  {
+    // check if there is an exact match
+    if (Equals(locale))
+      return locale;
+
+    int matchRank = GetMatchRank(locale);
+    if (matchRank > bestMatchRank)
+    {
+      bestMatchRank = matchRank;
+      bestMatch = locale;
+    }
+  }
+
+  return bestMatch;
+}
+
 bool CLocale::CheckValidity(const std::string& language, const std::string& territory, const std::string& codeset, const std::string& modifier)
 {
   static_cast<void>(territory);
@@ -232,4 +236,26 @@ void CLocale::Initialize()
     StringUtils::ToLower(m_language);
     StringUtils::ToUpper(m_territory);
   }
+}
+
+int CLocale::GetMatchRank(const std::string& locale) const
+{
+  CLocale other = FromString(locale);
+
+  // both locales must be valid and match in language
+  if (!m_valid || !other.m_valid ||
+      !StringUtils::EqualsNoCase(m_language, other.m_language))
+    return -1;
+
+  int rank = 0;
+  // matching in territory is considered more important than matching in
+  // codeset and/or modifier
+  if (!m_territory.empty() && !other.m_territory.empty() && StringUtils::EqualsNoCase(m_territory, other.m_territory))
+    rank += 3;
+  if (!m_codeset.empty() && !other.m_codeset.empty() && StringUtils::EqualsNoCase(m_codeset, other.m_codeset))
+    rank += 1;
+  if (!m_modifier.empty() && !other.m_modifier.empty() && StringUtils::EqualsNoCase(m_modifier, other.m_modifier))
+    rank += 1;
+
+  return rank;
 }

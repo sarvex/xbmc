@@ -1,31 +1,19 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include <map>
 #include <string.h>
 
 #include "FileItemHandler.h"
-#include "PlaylistOperations.h"
 #include "AudioLibrary.h"
 #include "VideoLibrary.h"
 #include "FileOperations.h"
+#include "utils/SortUtils.h"
 #include "utils/URIUtils.h"
 #include "utils/ISerializable.h"
 #include "utils/Variant.h"
@@ -40,10 +28,9 @@
 #include "music/MusicThumbLoader.h"
 #include "Util.h"
 #include "pvr/channels/PVRChannel.h"
+#include "pvr/epg/Epg.h"
 #include "pvr/recordings/PVRRecording.h"
 #include "pvr/timers/PVRTimerInfoTag.h"
-#include "epg/Epg.h"
-#include "epg/EpgContainer.h"
 
 using namespace MUSIC_INFO;
 using namespace JSONRPC;
@@ -93,7 +80,7 @@ bool CFileItemHandler::GetField(const std::string &field, const CVariant &info, 
         return true;
       }
     }
-    
+
     if (item->HasProperty("artist_" + field + "_array"))
     {
       result[field] = item->GetProperty("artist_" + field + "_array");
@@ -125,7 +112,7 @@ bool CFileItemHandler::GetField(const std::string &field, const CVariant &info, 
       result["art"] = artObj;
       return true;
     }
-    
+
     if (field == "thumbnail")
     {
       if (thumbLoader != NULL && !item->HasArt("thumb") && !fetchedArt &&
@@ -136,15 +123,15 @@ bool CFileItemHandler::GetField(const std::string &field, const CVariant &info, 
       }
       else if (item->HasPictureInfoTag() && !item->HasArt("thumb"))
         item->SetArt("thumb", CTextureUtils::GetWrappedThumbURL(item->GetPath()));
-      
+
       if (item->HasArt("thumb"))
         result["thumbnail"] = CTextureUtils::GetWrappedImageURL(item->GetArt("thumb"));
       else
         result["thumbnail"] = "";
-      
+
       return true;
     }
-    
+
     if (field == "fanart")
     {
       if (thumbLoader != NULL && !item->HasArt("fanart") && !fetchedArt &&
@@ -153,15 +140,15 @@ bool CFileItemHandler::GetField(const std::string &field, const CVariant &info, 
         thumbLoader->FillLibraryArt(*item);
         fetchedArt = true;
       }
-      
+
       if (item->HasArt("fanart"))
         result["fanart"] = CTextureUtils::GetWrappedImageURL(item->GetArt("fanart"));
       else
         result["fanart"] = "";
-      
+
       return true;
     }
-    
+
     if (item->HasVideoInfoTag() && item->GetVideoContentType() == VIDEODB_CONTENT_TVSHOWS)
     {
       if (item->GetVideoInfoTag()->m_iSeason < 0 && field == "season")
@@ -188,7 +175,7 @@ bool CFileItemHandler::GetField(const std::string &field, const CVariant &info, 
 
 void CFileItemHandler::FillDetails(const ISerializable *info, const CFileItemPtr &item, std::set<std::string> &fields, CVariant &result, CThumbLoader *thumbLoader /* = NULL */)
 {
-  if (info == NULL || fields.size() == 0)
+  if (info == NULL || fields.empty())
     return;
 
   CVariant serialization;
@@ -279,8 +266,6 @@ void CFileItemHandler::HandleFileItem(const char *ID, bool allowFile, const char
           object["file"] = item->GetVideoInfoTag()->GetPath().c_str();
         if (item->HasMusicInfoTag() && !item->GetMusicInfoTag()->GetURL().empty())
           object["file"] = item->GetMusicInfoTag()->GetURL().c_str();
-        if (item->HasPVRRecordingInfoTag() && !item->GetPVRRecordingInfoTag()->GetPath().empty())
-          object["file"] = item->GetPVRRecordingInfoTag()->GetPath().c_str();
         if (item->HasPVRTimerInfoTag() && !item->GetPVRTimerInfoTag()->m_strFileNameAndPath.empty())
           object["file"] = item->GetPVRTimerInfoTag()->m_strFileNameAndPath.c_str();
 
@@ -294,14 +279,14 @@ void CFileItemHandler::HandleFileItem(const char *ID, bool allowFile, const char
     {
       if (item->HasPVRChannelInfoTag() && item->GetPVRChannelInfoTag()->ChannelID() > 0)
          object[ID] = item->GetPVRChannelInfoTag()->ChannelID();
-      else if (item->HasEPGInfoTag() && item->GetEPGInfoTag()->UniqueBroadcastID() > 0)
+      else if (item->HasEPGInfoTag() && item->GetEPGInfoTag()->UniqueBroadcastID() > EPG_TAG_INVALID_UID)
          object[ID] = item->GetEPGInfoTag()->UniqueBroadcastID();
       else if (item->HasPVRRecordingInfoTag() && item->GetPVRRecordingInfoTag()->m_iRecordingId > 0)
          object[ID] = item->GetPVRRecordingInfoTag()->m_iRecordingId;
       else if (item->HasPVRTimerInfoTag() && item->GetPVRTimerInfoTag()->m_iTimerId > 0)
          object[ID] = item->GetPVRTimerInfoTag()->m_iTimerId;
       else if (item->HasMusicInfoTag() && item->GetMusicInfoTag()->GetDatabaseId() > 0)
-        object[ID] = (int)item->GetMusicInfoTag()->GetDatabaseId();
+        object[ID] = item->GetMusicInfoTag()->GetDatabaseId();
       else if (item->HasVideoInfoTag() && item->GetVideoInfoTag()->m_iDbId > 0)
         object[ID] = item->GetVideoInfoTag()->m_iDbId;
 
@@ -333,7 +318,7 @@ void CFileItemHandler::HandleFileItem(const char *ID, bool allowFile, const char
         {
           if (item->m_bIsFolder)
             object["filetype"] = "directory";
-          else 
+          else
             object["filetype"] = "file";
         }
       }
@@ -368,7 +353,7 @@ void CFileItemHandler::HandleFileItem(const char *ID, bool allowFile, const char
       FillDetails(item->GetMusicInfoTag(), item, fields, object, thumbLoader);
     if (item->HasPictureInfoTag())
       FillDetails(item->GetPictureInfoTag(), item, fields, object, thumbLoader);
-    
+
     FillDetails(item.get(), item, fields, object, thumbLoader);
 
     if (deleteThumbloader)
@@ -400,7 +385,8 @@ bool CFileItemHandler::FillFileItemList(const CVariant &parameterObject, CFileIt
     bool added = false;
     for (int index = 0; index < list.Size(); index++)
     {
-      if (list[index]->GetPath() == file)
+      if (list[index]->GetDynPath() == file ||
+          list[index]->GetMusicInfoTag()->GetURL() == file || list[index]->GetVideoInfoTag()->GetPath() == file)
       {
         added = true;
         break;

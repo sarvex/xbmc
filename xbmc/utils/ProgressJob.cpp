@@ -1,47 +1,28 @@
 /*
- *      Copyright (C) 2015 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2015-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include <math.h>
 
 #include "ProgressJob.h"
+#include "ServiceBroker.h"
 #include "dialogs/GUIDialogProgress.h"
 #include "dialogs/GUIDialogExtendedProgressBar.h"
+#include "guilib/GUIComponent.h"
 #include "guilib/GUIWindowManager.h"
-
-using namespace std;
+#include "utils/Variant.h"
 
 CProgressJob::CProgressJob()
-  : m_modal(false),
-    m_autoClose(true),
-    m_updateProgress(true),
-    m_updateInformation(true),
-    m_progress(NULL),
+  : m_progress(NULL),
     m_progressDialog(NULL)
 { }
 
 CProgressJob::CProgressJob(CGUIDialogProgressBarHandle* progressBar)
-  : m_modal(false),
-    m_autoClose(true),
-    m_updateProgress(true),
-    m_updateInformation(true),
-    m_progress(progressBar),
+  : m_progress(progressBar),
     m_progressDialog(NULL)
 { }
 
@@ -55,13 +36,10 @@ CProgressJob::~CProgressJob()
 
 bool CProgressJob::ShouldCancel(unsigned int progress, unsigned int total) const
 {
-  if (m_progressDialog != NULL)
-  {
-    if (IsCancelled())
-      return true;
+  if (IsCancelled())
+    return true;
 
-    SetProgress(progress, total);
-  }
+  SetProgress(progress, total);
 
   return CJob::ShouldCancel(progress, total);
 }
@@ -73,7 +51,7 @@ bool CProgressJob::DoModal()
   // get a progress dialog if we don't already have one
   if (m_progressDialog == NULL)
   {
-    m_progressDialog = (CGUIDialogProgress *)g_windowManager.GetWindow(WINDOW_DIALOG_PROGRESS);
+    m_progressDialog = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogProgress>(WINDOW_DIALOG_PROGRESS);
 
     if (m_progressDialog == NULL)
       return false;
@@ -84,9 +62,8 @@ bool CProgressJob::DoModal()
   // do the work
   bool result = DoWork();
 
-  // close the progress dialog
-  if (m_autoClose)
-    m_progressDialog->Close();
+  // mark the progress dialog as finished (will close it)
+  MarkFinished();
   m_modal = false;
 
   return result;
@@ -110,7 +87,7 @@ void CProgressJob::ShowProgressDialog() const
     return;
 
   // show the progress dialog as a modal dialog with a progress bar
-  m_progressDialog->StartModal();
+  m_progressDialog->Open();
   m_progressDialog->ShowProgressBar(true);
 }
 
@@ -123,7 +100,7 @@ void CProgressJob::SetTitle(const std::string &title)
     m_progress->SetTitle(title);
   else if (m_progressDialog != NULL)
   {
-    m_progressDialog->SetHeading(title);
+    m_progressDialog->SetHeading(CVariant{title});
 
     ShowProgressDialog();
   }
@@ -138,7 +115,7 @@ void CProgressJob::SetText(const std::string &text)
     m_progress->SetText(text);
   else if (m_progressDialog != NULL)
   {
-    m_progressDialog->SetText(text);
+    m_progressDialog->SetText(CVariant{text});
 
     ShowProgressDialog();
   }
@@ -182,7 +159,12 @@ void CProgressJob::MarkFinished()
   if (m_progress != NULL)
   {
     if (m_updateProgress)
+    {
       m_progress->MarkFinished();
+      // We don't own this pointer and it will be deleted after it's marked finished
+      // just set it to nullptr so we don't try to use it again
+      m_progress = nullptr;
+    }
   }
   else if (m_progressDialog != NULL && m_autoClose)
     m_progressDialog->Close();
@@ -194,4 +176,9 @@ bool CProgressJob::IsCancelled() const
     return m_progressDialog->IsCanceled();
 
   return false;
+}
+
+bool CProgressJob::HasProgressIndicator() const
+{
+  return m_progress != nullptr || m_progressDialog != nullptr;
 }

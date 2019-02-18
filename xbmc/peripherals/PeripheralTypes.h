@@ -1,28 +1,19 @@
-#pragma once
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
 
 #include <algorithm>
 #include <map>
+#include <memory>
 #include <string>
 #include <stdio.h>
+#include <vector>
 #ifdef TARGET_WINDOWS
 #include "PlatformDefs.h"
 #endif
@@ -38,7 +29,12 @@ namespace PERIPHERALS
     PERIPHERAL_BUS_USB,
     PERIPHERAL_BUS_PCI,
     PERIPHERAL_BUS_RPI,
-    PERIPHERAL_BUS_CEC
+    PERIPHERAL_BUS_CEC,
+    PERIPHERAL_BUS_ADDON,
+#ifdef TARGET_ANDROID
+    PERIPHERAL_BUS_ANDROID,
+#endif
+    PERIPHERAL_BUS_APPLICATION,
   };
 
   enum PeripheralFeature
@@ -51,7 +47,12 @@ namespace PERIPHERALS
     FEATURE_CEC,
     FEATURE_BLUETOOTH,
     FEATURE_TUNER,
-    FEATURE_IMON
+    FEATURE_IMON,
+    FEATURE_JOYSTICK,
+    FEATURE_RUMBLE,
+    FEATURE_POWER_OFF,
+    FEATURE_KEYBOARD,
+    FEATURE_MOUSE,
   };
 
   enum PeripheralType
@@ -64,8 +65,25 @@ namespace PERIPHERALS
     PERIPHERAL_CEC,
     PERIPHERAL_BLUETOOTH,
     PERIPHERAL_TUNER,
-    PERIPHERAL_IMON 
+    PERIPHERAL_IMON,
+    PERIPHERAL_JOYSTICK,
+    PERIPHERAL_KEYBOARD,
+    PERIPHERAL_MOUSE,
   };
+
+  class CPeripheral;
+  using PeripheralPtr = std::shared_ptr<CPeripheral>;
+  using PeripheralVector = std::vector<PeripheralPtr>;
+
+  class CPeripheralAddon;
+  using PeripheralAddonPtr = std::shared_ptr<CPeripheralAddon>;
+  using PeripheralAddonVector = std::vector<PeripheralAddonPtr>;
+
+  class CEventPollHandle;
+  using EventPollHandlePtr = std::unique_ptr<CEventPollHandle>;
+
+  class CEventLockHandle;
+  using EventLockHandlePtr = std::unique_ptr<CEventLockHandle>;
 
   struct PeripheralID
   {
@@ -75,8 +93,8 @@ namespace PERIPHERALS
 
   struct PeripheralDeviceSetting
   {
-    CSetting* m_setting;
-    int       m_order;
+    std::shared_ptr<CSetting> m_setting;
+    int m_order;
   };
 
   struct PeripheralDeviceMapping
@@ -112,6 +130,12 @@ namespace PERIPHERALS
         return "tuner";
       case PERIPHERAL_IMON:
         return "imon";
+      case PERIPHERAL_JOYSTICK:
+        return "joystick";
+      case PERIPHERAL_KEYBOARD:
+        return "keyboard";
+      case PERIPHERAL_MOUSE:
+        return "mouse";
       default:
         return "unknown";
       }
@@ -138,6 +162,12 @@ namespace PERIPHERALS
         return PERIPHERAL_TUNER;
       else if (strTypeLowerCase == "imon")
         return PERIPHERAL_IMON;
+      else if (strTypeLowerCase == "joystick")
+        return PERIPHERAL_JOYSTICK;
+      else if (strTypeLowerCase == "keyboard")
+        return PERIPHERAL_KEYBOARD;
+      else if (strTypeLowerCase == "mouse")
+        return PERIPHERAL_MOUSE;
 
       return PERIPHERAL_UNKNOWN;
     };
@@ -154,6 +184,14 @@ namespace PERIPHERALS
         return "rpi";
       case PERIPHERAL_BUS_CEC:
         return "cec";
+      case PERIPHERAL_BUS_ADDON:
+        return "addon";
+#ifdef TARGET_ANDROID
+      case PERIPHERAL_BUS_ANDROID:
+        return "android";
+#endif
+      case PERIPHERAL_BUS_APPLICATION:
+        return "application";
       default:
         return "unknown";
       }
@@ -172,8 +210,85 @@ namespace PERIPHERALS
         return PERIPHERAL_BUS_RPI;
       else if (strTypeLowerCase == "cec")
         return PERIPHERAL_BUS_CEC;
+      else if (strTypeLowerCase == "addon")
+        return PERIPHERAL_BUS_ADDON;
+#ifdef TARGET_ANDROID
+      else if (strTypeLowerCase == "android")
+        return PERIPHERAL_BUS_ANDROID;
+#endif
+      else if (strTypeLowerCase == "application")
+        return PERIPHERAL_BUS_APPLICATION;
 
       return PERIPHERAL_BUS_UNKNOWN;
+    };
+
+    static const char *FeatureToString(const PeripheralFeature type)
+    {
+      switch (type)
+      {
+      case FEATURE_HID:
+        return "HID";
+      case FEATURE_NIC:
+        return "NIC";
+      case FEATURE_DISK:
+        return "disk";
+      case FEATURE_NYXBOARD:
+        return "nyxboard";
+      case FEATURE_CEC:
+        return "CEC";
+      case FEATURE_BLUETOOTH:
+        return "bluetooth";
+      case FEATURE_TUNER:
+        return "tuner";
+      case FEATURE_IMON:
+        return "imon";
+      case FEATURE_JOYSTICK:
+        return "joystick";
+      case FEATURE_RUMBLE:
+        return "rumble";
+      case FEATURE_POWER_OFF:
+        return "poweroff";
+      case FEATURE_KEYBOARD:
+        return "keyboard";
+      case FEATURE_MOUSE:
+        return "mouse";
+      case FEATURE_UNKNOWN:
+      default:
+        return "unknown";
+      }
+    };
+
+    static PeripheralFeature GetFeatureTypeFromString(const std::string &strType)
+    {
+      std::string strTypeLowerCase(strType);
+      StringUtils::ToLower(strTypeLowerCase);
+
+      if (strTypeLowerCase == "hid")
+        return FEATURE_HID;
+      else if (strTypeLowerCase == "cec")
+        return FEATURE_CEC;
+      else if (strTypeLowerCase == "disk")
+        return FEATURE_DISK;
+      else if (strTypeLowerCase == "nyxboard")
+        return FEATURE_NYXBOARD;
+      else if (strTypeLowerCase == "bluetooth")
+        return FEATURE_BLUETOOTH;
+      else if (strTypeLowerCase == "tuner")
+        return FEATURE_TUNER;
+      else if (strTypeLowerCase == "imon")
+        return FEATURE_IMON;
+      else if (strTypeLowerCase == "joystick")
+        return FEATURE_JOYSTICK;
+      else if (strTypeLowerCase == "rumble")
+        return FEATURE_RUMBLE;
+      else if (strTypeLowerCase == "poweroff")
+        return FEATURE_POWER_OFF;
+      else if (strTypeLowerCase == "keyboard")
+        return FEATURE_KEYBOARD;
+      else if (strTypeLowerCase == "mouse")
+        return FEATURE_MOUSE;
+
+      return FEATURE_UNKNOWN;
     };
 
     static int HexStringToInt(const char *strHex)
@@ -197,23 +312,12 @@ namespace PERIPHERALS
   class PeripheralScanResult
   {
   public:
-    PeripheralScanResult(const PeripheralBusType busType) :
-      m_type(PERIPHERAL_UNKNOWN),
-      m_iVendorId(0),
-      m_iProductId(0),
-      m_mappedType(PERIPHERAL_UNKNOWN),
+    explicit PeripheralScanResult(const PeripheralBusType busType) :
       m_busType(busType),
-      m_mappedBusType(busType),
-      m_iSequence(0) {}
+      m_mappedBusType(busType)
+      {}
 
-    PeripheralScanResult(void) :
-      m_type(PERIPHERAL_UNKNOWN),
-      m_iVendorId(0),
-      m_iProductId(0),
-      m_mappedType(PERIPHERAL_UNKNOWN),
-      m_busType(PERIPHERAL_BUS_UNKNOWN),
-      m_mappedBusType(PERIPHERAL_BUS_UNKNOWN),
-      m_iSequence(0) {}
+    PeripheralScanResult(void) = default;
 
     bool operator ==(const PeripheralScanResult& right) const
     {
@@ -229,26 +333,26 @@ namespace PERIPHERALS
       return !(*this == right);
     }
 
-    PeripheralType    m_type;
+    PeripheralType    m_type = PERIPHERAL_UNKNOWN;
     std::string        m_strLocation;
-    int               m_iVendorId;
-    int               m_iProductId;
-    PeripheralType    m_mappedType;
+    int               m_iVendorId = 0;
+    int               m_iProductId = 0;
+    PeripheralType    m_mappedType = PERIPHERAL_UNKNOWN;
     std::string        m_strDeviceName;
-    PeripheralBusType m_busType;
-    PeripheralBusType m_mappedBusType;
-    unsigned int      m_iSequence; // when more than one adapter of the same type is found
+    PeripheralBusType m_busType = PERIPHERAL_BUS_UNKNOWN;
+    PeripheralBusType m_mappedBusType = PERIPHERAL_BUS_UNKNOWN;
+    unsigned int      m_iSequence = 0; // when more than one adapter of the same type is found
   };
 
   struct PeripheralScanResults
   {
     bool GetDeviceOnLocation(const std::string& strLocation, PeripheralScanResult* result) const
     {
-      for (std::vector<PeripheralScanResult>::const_iterator it = m_results.begin(); it != m_results.end(); it++)
+      for (const auto& it : m_results)
       {
-        if ((*it).m_strLocation == strLocation)
+        if (it.m_strLocation == strLocation)
         {
-          *result = *it;
+          *result = it;
           return true;
         }
       }

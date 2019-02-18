@@ -1,37 +1,26 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "threads/SystemClock.h"
 #include "MultiPathDirectory.h"
 #include "Directory.h"
+#include "ServiceBroker.h"
 #include "Util.h"
 #include "URL.h"
+#include "guilib/GUIComponent.h"
 #include "guilib/GUIWindowManager.h"
 #include "dialogs/GUIDialogProgress.h"
 #include "FileItem.h"
 #include "utils/StringUtils.h"
 #include "utils/log.h"
-#include "utils/TimeUtils.h"
+#include "utils/Variant.h"
 #include "utils/URIUtils.h"
 
-using namespace std;
 using namespace XFILE;
 
 //
@@ -41,17 +30,15 @@ using namespace XFILE;
 // multipath:// style url.
 //
 
-CMultiPathDirectory::CMultiPathDirectory()
-{}
+CMultiPathDirectory::CMultiPathDirectory() = default;
 
-CMultiPathDirectory::~CMultiPathDirectory()
-{}
+CMultiPathDirectory::~CMultiPathDirectory() = default;
 
 bool CMultiPathDirectory::GetDirectory(const CURL& url, CFileItemList &items)
 {
   CLog::Log(LOGDEBUG,"CMultiPathDirectory::GetDirectory(%s)", url.GetRedacted().c_str());
 
-  vector<std::string> vecPaths;
+  std::vector<std::string> vecPaths;
   if (!GetPaths(url, vecPaths))
     return false;
 
@@ -64,14 +51,14 @@ bool CMultiPathDirectory::GetDirectory(const CURL& url, CFileItemList &items)
     // show the progress dialog if we have passed our time limit
     if (progressTime.IsTimePast() && !dlgProgress)
     {
-      dlgProgress = (CGUIDialogProgress *)g_windowManager.GetWindow(WINDOW_DIALOG_PROGRESS);
+      dlgProgress = CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogProgress>(WINDOW_DIALOG_PROGRESS);
       if (dlgProgress)
       {
-        dlgProgress->SetHeading(15310);
-        dlgProgress->SetLine(0, 15311);
-        dlgProgress->SetLine(1, "");
-        dlgProgress->SetLine(2, "");
-        dlgProgress->StartModal();
+        dlgProgress->SetHeading(CVariant{15310});
+        dlgProgress->SetLine(0, CVariant{15311});
+        dlgProgress->SetLine(1, CVariant{""});
+        dlgProgress->SetLine(2, CVariant{""});
+        dlgProgress->Open();
         dlgProgress->ShowProgressBar(true);
         dlgProgress->SetProgressMax((int)vecPaths.size()*2);
         dlgProgress->Progress();
@@ -80,7 +67,7 @@ bool CMultiPathDirectory::GetDirectory(const CURL& url, CFileItemList &items)
     if (dlgProgress)
     {
       CURL url(vecPaths[i]);
-      dlgProgress->SetLine(1, url.GetWithoutUserDetails());
+      dlgProgress->SetLine(1, CVariant{url.GetWithoutUserDetails()});
       dlgProgress->SetProgressAdvance();
       dlgProgress->Progress();
     }
@@ -118,7 +105,7 @@ bool CMultiPathDirectory::Exists(const CURL& url)
 {
   CLog::Log(LOGDEBUG,"Testing Existence (%s)", url.GetRedacted().c_str());
 
-  vector<std::string> vecPaths;
+  std::vector<std::string> vecPaths;
   if (!GetPaths(url, vecPaths))
     return false;
 
@@ -133,7 +120,7 @@ bool CMultiPathDirectory::Exists(const CURL& url)
 
 bool CMultiPathDirectory::Remove(const CURL& url)
 {
-  vector<std::string> vecPaths;
+  std::vector<std::string> vecPaths;
   if (!GetPaths(url, vecPaths))
     return false;
 
@@ -154,7 +141,7 @@ std::string CMultiPathDirectory::GetFirstPath(const std::string &strPath)
   return "";
 }
 
-bool CMultiPathDirectory::GetPaths(const CURL& url, vector<std::string>& vecPaths)
+bool CMultiPathDirectory::GetPaths(const CURL& url, std::vector<std::string>& vecPaths)
 {
   const std::string pathToUrl(url.Get());
   return GetPaths(pathToUrl, vecPaths);
@@ -169,8 +156,8 @@ bool CMultiPathDirectory::GetPaths(const std::string& path, std::vector<std::str
   path1.erase(path1.find_last_not_of('/')+1);
 
   // split on "/"
-  vector<string> temp = StringUtils::Split(path1, '/');
-  if (temp.size() == 0)
+  std::vector<std::string> temp = StringUtils::Split(path1, '/');
+  if (temp.empty())
     return false;
 
   // URL decode each item
@@ -186,7 +173,7 @@ bool CMultiPathDirectory::HasPath(const std::string& strPath, const std::string&
   URIUtils::RemoveSlashAtEnd(strPath1);
 
   // split on "/"
-  vector<string> vecTemp = StringUtils::Split(strPath1, '/');
+  std::vector<std::string> vecTemp = StringUtils::Split(strPath1, '/');
   if (vecTemp.empty())
     return false;
 
@@ -199,7 +186,7 @@ bool CMultiPathDirectory::HasPath(const std::string& strPath, const std::string&
   return false;
 }
 
-std::string CMultiPathDirectory::ConstructMultiPath(const CFileItemList& items, const vector<int> &stack)
+std::string CMultiPathDirectory::ConstructMultiPath(const CFileItemList& items, const std::vector<int> &stack)
 {
   // we replace all instances of comma's with double comma's, then separate
   // the paths using " , "
@@ -221,23 +208,23 @@ void CMultiPathDirectory::AddToMultiPath(std::string& strMultiPath, const std::s
   strMultiPath += "/";
 }
 
-std::string CMultiPathDirectory::ConstructMultiPath(const vector<string> &vecPaths)
+std::string CMultiPathDirectory::ConstructMultiPath(const std::vector<std::string> &vecPaths)
 {
   // we replace all instances of comma's with double comma's, then separate
   // the paths using " , "
   //CLog::Log(LOGDEBUG, "Building multipath");
   std::string newPath = "multipath://";
   //CLog::Log(LOGDEBUG, "-- adding path: %s", strPath.c_str());
-  for (vector<string>::const_iterator path = vecPaths.begin(); path != vecPaths.end(); ++path)
+  for (std::vector<std::string>::const_iterator path = vecPaths.begin(); path != vecPaths.end(); ++path)
     AddToMultiPath(newPath, *path);
   //CLog::Log(LOGDEBUG, "Final path: %s", newPath.c_str());
   return newPath;
 }
 
-std::string CMultiPathDirectory::ConstructMultiPath(const set<string> &setPaths)
+std::string CMultiPathDirectory::ConstructMultiPath(const std::set<std::string> &setPaths)
 {
   std::string newPath = "multipath://";
-  for (set<string>::const_iterator path = setPaths.begin(); path != setPaths.end(); ++path)
+  for (std::set<std::string>::const_iterator path = setPaths.begin(); path != setPaths.end(); ++path)
     AddToMultiPath(newPath, *path);
 
   return newPath;
@@ -245,7 +232,7 @@ std::string CMultiPathDirectory::ConstructMultiPath(const set<string> &setPaths)
 
 void CMultiPathDirectory::MergeItems(CFileItemList &items)
 {
-  CLog::Log(LOGDEBUG, "CMultiPathDirectory::MergeItems, items = %i", (int)items.Size());
+  CLog::Log(LOGDEBUG, "CMultiPathDirectory::MergeItems, items = %i", items.Size());
   unsigned int time = XbmcThreads::SystemClockMillis();
   if (items.Size() == 0)
     return;
@@ -265,7 +252,7 @@ void CMultiPathDirectory::MergeItems(CFileItemList &items)
     if (!pItem1->m_bIsFolder)
       break;
 
-    vector<int> stack;
+    std::vector<int> stack;
     stack.push_back(i);
     CLog::Log(LOGDEBUG,"Testing path: [%03i] %s", i, pItem1->GetPath().c_str());
 
@@ -308,7 +295,7 @@ void CMultiPathDirectory::MergeItems(CFileItemList &items)
 
 bool CMultiPathDirectory::SupportsWriteFileOperations(const std::string &strPath)
 {
-  vector<std::string> paths;
+  std::vector<std::string> paths;
   GetPaths(strPath, paths);
   for (unsigned int i = 0; i < paths.size(); ++i)
     if (CUtil::SupportsWriteFileOperations(paths[i]))

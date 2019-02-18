@@ -1,21 +1,9 @@
 /*
- *      Copyright (C) 2015 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2015-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "HTTPPythonHandler.h"
@@ -25,6 +13,7 @@
 #include "interfaces/python/XBPython.h"
 #include "filesystem/File.h"
 #include "network/WebServer.h"
+#include "network/httprequesthandler/HTTPRequestHandlerUtils.h"
 #include "network/httprequesthandler/HTTPWebinterfaceHandler.h"
 #include "network/httprequesthandler/python/HTTPPythonInvoker.h"
 #include "network/httprequesthandler/python/HTTPPythonWsgiInvoker.h"
@@ -38,7 +27,6 @@ CHTTPPythonHandler::CHTTPPythonHandler()
   : IHTTPRequestHandler(),
     m_scriptPath(),
     m_addon(),
-    m_type(),
     m_lastModified(),
     m_requestData(),
     m_responseData(),
@@ -50,7 +38,6 @@ CHTTPPythonHandler::CHTTPPythonHandler(const HTTPRequest &request)
   : IHTTPRequestHandler(request),
     m_scriptPath(),
     m_addon(),
-    m_type(),
     m_lastModified(),
     m_requestData(),
     m_responseData(),
@@ -78,7 +65,7 @@ CHTTPPythonHandler::CHTTPPythonHandler(const HTTPRequest &request)
 
   // we need to map any requests to a specific WSGI webinterface to the root path
   std::string baseLocation = webinterface->GetBaseLocation();
-  if (!StringUtils::StartsWith(m_request.pathUrl, baseLocation))
+  if (!URIUtils::PathHasParent(m_request.pathUrl, baseLocation))
   {
     m_response.type = HTTPRedirect;
     m_response.status = MHD_HTTP_MOVED_PERMANENTLY;
@@ -108,7 +95,7 @@ CHTTPPythonHandler::CHTTPPythonHandler(const HTTPRequest &request)
   m_lastModified = *time;
 }
 
-bool CHTTPPythonHandler::CanHandleRequest(const HTTPRequest &request)
+bool CHTTPPythonHandler::CanHandleRequest(const HTTPRequest &request) const
 {
   ADDON::AddonPtr addon;
   std::string path;
@@ -138,8 +125,8 @@ int CHTTPPythonHandler::HandleRequest()
     HTTPPythonRequest* pythonRequest = new HTTPPythonRequest();
     pythonRequest->connection = m_request.connection;
     pythonRequest->file = URIUtils::GetFileName(m_request.pathUrl);
-    CWebServer::GetRequestHeaderValues(m_request.connection, MHD_GET_ARGUMENT_KIND, pythonRequest->getValues);
-    CWebServer::GetRequestHeaderValues(m_request.connection, MHD_HEADER_KIND, pythonRequest->headerValues);
+    HTTPRequestHandlerUtils::GetRequestHeaderValues(m_request.connection, MHD_GET_ARGUMENT_KIND, pythonRequest->getValues);
+    HTTPRequestHandlerUtils::GetRequestHeaderValues(m_request.connection, MHD_HEADER_KIND, pythonRequest->headerValues);
     pythonRequest->method = m_request.method;
     pythonRequest->postValues = m_postFields;
     pythonRequest->requestContent = m_requestData;
@@ -162,7 +149,7 @@ int CHTTPPythonHandler::HandleRequest()
 
     CHTTPPythonInvoker* pythonInvoker = new CHTTPPythonWsgiInvoker(&g_pythonParser, pythonRequest);
     LanguageInvokerPtr languageInvokerPtr(pythonInvoker);
-    int result = CScriptInvocationManager::Get().ExecuteSync(m_scriptPath, languageInvokerPtr, m_addon, args, 30000, false);
+    int result = CScriptInvocationManager::GetInstance().ExecuteSync(m_scriptPath, languageInvokerPtr, m_addon, args, 30000, false);
 
     // check if the script couldn't be started
     if (result < 0)
@@ -241,11 +228,7 @@ bool CHTTPPythonHandler::GetLastModifiedDate(CDateTime &lastModified) const
   return true;
 }
 
-#if (MHD_VERSION >= 0x00040001)
 bool CHTTPPythonHandler::appendPostData(const char *data, size_t size)
-#else
-bool CHTTPPythonHandler::appendPostData(const char *data, unsigned int size)
-#endif
 {
   if (m_requestData.size() + size > MAX_STRING_POST_SIZE)
   {

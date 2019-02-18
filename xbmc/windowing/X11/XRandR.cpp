@@ -1,31 +1,16 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "XRandR.h"
 
-#ifdef HAS_XRANDR
-
 #include <string.h>
 #include <sys/wait.h>
-#include "system.h"
-#include "PlatformInclude.h"
+#include "PlatformDefs.h"
 #include "utils/XBMCTinyXML.h"
 #include "utils/StringUtils.h"
 #include "../xbmc/utils/log.h"
@@ -37,7 +22,9 @@
 #include <sys/wait.h>
 #endif
 
-using namespace std;
+#ifdef TARGET_POSIX
+#include "platform/linux/XTimeUtils.h"
+#endif
 
 CXRandR::CXRandR(bool query)
 {
@@ -102,7 +89,7 @@ bool CXRandR::Query(bool force, int screennum, bool ignoreoff)
   TiXmlElement *pRootElement = xmlDoc.RootElement();
   if (atoi(pRootElement->Attribute("id")) != screennum)
   {
-    // TODO ERROR
+    //! @todo ERROR
     return false;
   }
 
@@ -330,7 +317,7 @@ bool CXRandR::SetMode(XOutput output, XMode mode)
   char cmd[255];
 
   if (getenv("KODI_BIN_HOME"))
-    snprintf(cmd, sizeof(cmd), "%s/%s-xrandr --screen %d --output %s --mode %s", 
+    snprintf(cmd, sizeof(cmd), "%s/%s-xrandr --screen %d --output %s --mode %s",
                getenv("KODI_BIN_HOME"),appname.c_str(),
                outputFound.screen, outputFound.name.c_str(), modeFound.id.c_str());
   else
@@ -405,7 +392,7 @@ void CXRandR::LoadCustomModeLinesToAllOutputs(void)
   TiXmlElement *pRootElement = xmlDoc.RootElement();
   if (strcasecmp(pRootElement->Value(), "modelines") != 0)
   {
-    // TODO ERROR
+    //! @todo ERROR
     return;
   }
 
@@ -480,7 +467,7 @@ XOutput* CXRandR::GetOutput(const std::string& outputName)
   return result;
 }
 
-int CXRandR::GetCrtc(int x, int y)
+int CXRandR::GetCrtc(int x, int y, float &hz)
 {
   int crtc = 0;
   for (unsigned int i = 0; i < m_outputs.size(); ++i)
@@ -492,6 +479,14 @@ int CXRandR::GetCrtc(int x, int y)
         (m_outputs[i].y <= y && (m_outputs[i].y+m_outputs[i].h) > y))
     {
       crtc = m_outputs[i].crtc;
+      for (auto mode: m_outputs[i].modes)
+      {
+        if (mode.isCurrent)
+        {
+          hz = mode.hz;
+          break;
+        }
+      }
       break;
     }
   }
@@ -499,8 +494,6 @@ int CXRandR::GetCrtc(int x, int y)
 }
 
 CXRandR g_xrandr;
-
-#endif // HAS_XRANDR
 
 /*
   int main()

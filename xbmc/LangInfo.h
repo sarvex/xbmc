@@ -1,23 +1,20 @@
-#pragma once
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
+
+#pragma once
+
+#include <locale>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "settings/lib/ISettingCallback.h"
 #include "settings/lib/ISettingsHandler.h"
@@ -25,13 +22,6 @@
 #include "utils/Locale.h"
 #include "utils/Speed.h"
 #include "utils/Temperature.h"
-
-#include <map>
-#include <memory>
-#include <set>
-#include <string>
-#include <vector>
-#include <locale>
 
 #ifdef TARGET_WINDOWS
 #ifdef GetDateFormat
@@ -60,15 +50,13 @@ class CLangInfo : public ISettingCallback, public ISettingsHandler
 {
 public:
   CLangInfo();
-  virtual ~CLangInfo();
+  ~CLangInfo() override;
 
   // implementation of ISettingCallback
-  virtual void OnSettingChanged(const CSetting *setting);
+  void OnSettingChanged(std::shared_ptr<const CSetting> setting) override;
 
   // implementation of ISettingsHandler
-  virtual void OnSettingsLoaded();
-
-  bool Load(const std::string& strLanguage);
+  void OnSettingsLoaded() override;
 
   /*!
    \brief Returns the language addon for the given locale (or the current one).
@@ -98,23 +86,14 @@ public:
   \param reloadServices (optional) Whether to reload services relying on localization.
   \return True if the language has been successfully loaded, false otherwise.
   */
-  bool SetLanguage(const std::string &strLanguage = "", bool reloadServices = true);
-  /*!
-   \brief Sets and loads the given (or configured) language, its details and strings.
-
-   \param fallback Whether the fallback language has been loaded instead of the given language.
-   \param strLanguage (optional) Language to be loaded.
-   \param reloadServices (optional) Whether to reload services relying on localization.
-   \return True if the language has been successfully loaded, false otherwise.
-   */
-  bool SetLanguage(bool& fallback, const std::string &strLanguage = "", bool reloadServices = true);
+  bool SetLanguage(std::string strLanguage = "", bool reloadServices = true);
 
   const std::string& GetAudioLanguage() const;
   // language can either be a two char language code as defined in ISO639
   // or a three char language code
   // or a language name in english (as used by XBMC)
   void SetAudioLanguage(const std::string& language);
-  
+
   // three char language code (not win32 specific)
   const std::string& GetSubtitleLanguage() const;
   // language can either be a two char language code as defined in ISO639
@@ -128,6 +107,8 @@ public:
   const std::string& GetTimeZone() const;
 
   const std::string& GetRegionLocale() const;
+
+  const std::locale& GetOriginalLocale() const;
 
   /*!
   \brief Returns the full locale of the current language.
@@ -154,6 +135,7 @@ public:
   void Set24HourClock(bool use24HourClock);
   void Set24HourClock(const std::string& str24HourClock);
   const std::string& GetMeridiemSymbol(MeridiemSymbol symbol) const;
+  static const std::string& MeridiemSymbolToString(MeridiemSymbol symbol);
 
   CTemperature::Unit GetTemperatureUnit() const;
   void SetTemperatureUnit(CTemperature::Unit temperatureUnit);
@@ -181,34 +163,57 @@ public:
 
   static void LoadTokens(const TiXmlNode* pTokens, std::set<std::string>& vecTokens);
 
-  static void SettingOptionsLanguageNamesFiller(const CSetting *setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
-  static void SettingOptionsStreamLanguagesFiller(const CSetting *setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
-  static void SettingOptionsISO6391LanguagesFiller(const CSetting *setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
-  static void SettingOptionsRegionsFiller(const CSetting *setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
-  static void SettingOptionsShortDateFormatsFiller(const CSetting *setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
-  static void SettingOptionsLongDateFormatsFiller(const CSetting *setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
-  static void SettingOptionsTimeFormatsFiller(const CSetting *setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
-  static void SettingOptions24HourClockFormatsFiller(const CSetting *setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
-  static void SettingOptionsTemperatureUnitsFiller(const CSetting *setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
-  static void SettingOptionsSpeedUnitsFiller(const CSetting *setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
+  static void SettingOptionsLanguageNamesFiller(std::shared_ptr<const CSetting> setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
+  static void SettingOptionsAudioStreamLanguagesFiller(std::shared_ptr<const CSetting> setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
+  static void SettingOptionsSubtitleStreamLanguagesFiller(std::shared_ptr<const CSetting> setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
+  static void SettingOptionsSubtitleDownloadlanguagesFiller(std::shared_ptr<const CSetting> setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
+  static void SettingOptionsISO6391LanguagesFiller(std::shared_ptr<const CSetting> setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
+  static void SettingOptionsRegionsFiller(std::shared_ptr<const CSetting> setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
+  static void SettingOptionsShortDateFormatsFiller(std::shared_ptr<const CSetting> setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
+  static void SettingOptionsLongDateFormatsFiller(std::shared_ptr<const CSetting> setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
+  static void SettingOptionsTimeFormatsFiller(std::shared_ptr<const CSetting> setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
+  static void SettingOptions24HourClockFormatsFiller(std::shared_ptr<const CSetting> setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
+  static void SettingOptionsTemperatureUnitsFiller(std::shared_ptr<const CSetting> setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
+  static void SettingOptionsSpeedUnitsFiller(std::shared_ptr<const CSetting> setting, std::vector< std::pair<std::string, std::string> > &list, std::string &current, void *data);
 
 protected:
   void SetDefaults();
+  bool Load(const std::string& strLanguage);
 
   static bool DetermineUse24HourClockFromTimeFormat(const std::string& timeFormat);
   static bool DetermineUseMeridiemFromTimeFormat(const std::string& timeFormat);
   static std::string PrepareTimeFormat(const std::string& timeFormat, bool use24HourClock);
+  static void AddLanguages(std::vector< std::pair<std::string, std::string> > &list);
 
-  class CRegion
+  class CRegion final
   {
   public:
-    CRegion(const CRegion& region);
     CRegion();
-    virtual ~CRegion();
     void SetDefaults();
     void SetTemperatureUnit(const std::string& strUnit);
     void SetSpeedUnit(const std::string& strUnit);
     void SetTimeZone(const std::string& strTimeZone);
+
+    class custom_numpunct : public std::numpunct<char>
+    {
+    public:
+      custom_numpunct(const char decimal_point, const char thousands_sep, const std::string& grouping)
+        : cDecimalPoint(decimal_point), cThousandsSep(thousands_sep), sGroup(grouping) {}
+    protected:
+      char do_decimal_point() const override { return cDecimalPoint; }
+      char do_thousands_sep() const override { return cThousandsSep; }
+      std::string do_grouping() const override { return sGroup; }
+    private:
+      const char cDecimalPoint;
+      const char cThousandsSep;
+      const std::string sGroup;
+    };
+
+    /*! \brief Set the locale associated with this region global.
+
+    Set the locale associated with this region global. This affects string
+    sorting & transformations.
+    */
     void SetGlobalLocale();
     std::string m_strLangLocaleName;
     std::string m_strLangLocaleCodeTwoChar;
@@ -219,6 +224,9 @@ protected:
     std::string m_strTimeFormat;
     std::string m_strMeridiemSymbols[2];
     std::string m_strTimeZone;
+    std::string m_strGrouping;
+    char m_cDecimalSep;
+    char m_cThousandsSep;
 
     CTemperature::Unit m_tempUnit;
     CSpeed::Unit m_speedUnit;
@@ -232,6 +240,7 @@ protected:
   CRegion* m_currentRegion; // points to the current region
   CRegion m_defaultRegion; // default, will be used if no region available via langinfo.xml
   std::locale m_systemLocale;     // current locale, matching GUI settings
+  std::locale m_originalLocale; // original locale, without changes of collate
 
   LanguageResourcePtr m_languageAddon;
 

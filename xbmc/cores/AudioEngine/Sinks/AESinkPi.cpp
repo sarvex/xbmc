@@ -1,36 +1,23 @@
 /*
- *      Copyright (C) 2010-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2010-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
-
-#include "system.h"
-
-#if defined(TARGET_RASPBERRY_PI)
 
 #include <stdint.h>
 #include <limits.h>
 #include <cassert>
 
 #include "AESinkPi.h"
+#include "ServiceBroker.h"
+#include "cores/AudioEngine/AESinkFactory.h"
 #include "cores/AudioEngine/Utils/AEUtil.h"
 #include "utils/log.h"
 #include "settings/Settings.h"
-#include "linux/RBP.h"
+#include "settings/SettingsComponent.h"
+#include "platform/linux/RBP.h"
 
 #define CLASSNAME "CAESinkPi"
 
@@ -45,7 +32,8 @@ CAESinkPi::CAESinkPi() :
     m_sinkbuffer_sec_per_byte(0),
     m_Initialized(false),
     m_submitted(0),
-    m_omx_output(NULL)
+    m_omx_output(NULL),
+    m_output(AESINKPI_UNKNOWN)
 {
 }
 
@@ -60,7 +48,7 @@ void CAESinkPi::SetAudioDest()
   OMX_INIT_STRUCTURE(audioDest);
   if ( m_omx_render.IsInitialized() )
   {
-    if (CSettings::Get().GetString("audiooutput.audiodevice") == "PI:Analogue")
+    if (m_output == AESINKPI_ANALOGUE)
       strncpy((char *)audioDest.sName, "local", strlen("local"));
     else
       strncpy((char *)audioDest.sName, "hdmi", strlen("hdmi"));
@@ -70,7 +58,7 @@ void CAESinkPi::SetAudioDest()
   }
   if ( m_omx_render_slave.IsInitialized() )
   {
-    if (CSettings::Get().GetString("audiooutput.audiodevice") != "PI:Analogue")
+    if (m_output != AESINKPI_ANALOGUE)
       strncpy((char *)audioDest.sName, "local", strlen("local"));
     else
       strncpy((char *)audioDest.sName, "hdmi", strlen("hdmi"));
@@ -93,9 +81,9 @@ static void SetAudioProps(bool stream_channels, uint32_t channel_map)
   CLog::Log(LOGDEBUG, "%s:%s hdmi_stream_channels %d hdmi_channel_map %08x", CLASSNAME, __func__, stream_channels, channel_map);
 }
 
-static uint32_t GetChannelMap(AEAudioFormat &format, bool passthrough)
+static uint32_t GetChannelMap(const CAEChannelInfo &channelLayout, bool passthrough)
 {
-  unsigned int channels = format.m_channelLayout.Count();
+  unsigned int channels = channelLayout.Count();
   uint32_t channel_map = 0;
   if (passthrough)
     return 0;
@@ -134,12 +122,12 @@ static uint32_t GetChannelMap(AEAudioFormat &format, bool passthrough)
   // According to CEA-861-D only RL and RR are known. In case of a format having SL and SR channels
   // but no BR BL channels, we use the wide map in order to open only the num of channels really
   // needed.
-  if (format.m_channelLayout.HasChannel(AE_CH_BL) && !format.m_channelLayout.HasChannel(AE_CH_SL))
+  if (channelLayout.HasChannel(AE_CH_BL) && !channelLayout.HasChannel(AE_CH_SL))
     map = map_back;
 
   for (unsigned int i = 0; i < channels; ++i)
   {
-    AEChannel c = format.m_channelLayout[i];
+    AEChannel c = channelLayout[i];
     unsigned int chan = 0;
     if ((unsigned int)c < sizeof map_normal / sizeof *map_normal)
       chan = map[(unsigned int)c];
@@ -170,14 +158,34 @@ static uint32_t GetChannelMap(AEAudioFormat &format, bool passthrough)
     0xff, // 7
     0x13, // 7.1
   };
-  uint8_t cea = format.m_channelLayout.HasChannel(AE_CH_LFE) ? cea_map_lfe[channels] : cea_map[channels];
+  uint8_t cea = channelLayout.HasChannel(AE_CH_LFE) ? cea_map_lfe[channels] : cea_map[channels];
   if (cea == 0xff)
-    CLog::Log(LOGERROR, "%s::%s - Unexpected CEA mapping %d,%d", CLASSNAME, __func__, format.m_channelLayout.HasChannel(AE_CH_LFE), channels);
+    CLog::Log(LOGERROR, "%s::%s - Unexpected CEA mapping %d,%d", CLASSNAME, __func__, channelLayout.HasChannel(AE_CH_LFE), channels);
 
   channel_map |= cea << 24;
 
   return channel_map;
 }
+
+void CAESinkPi::Register()
+{
+  AE::AESinkRegEntry reg;
+  reg.sinkName = "PI";
+  reg.createFunc = CAESinkPi::Create;
+  reg.enumerateFunc = CAESinkPi::EnumerateDevicesEx;
+  AE::CAESinkFactory::RegisterSink(reg);
+}
+
+IAESink* CAESinkPi::Create(std::string &device, AEAudioFormat &desiredFormat)
+{
+  IAESink *sink = new CAESinkPi();
+  if (sink->Initialize(desiredFormat, device))
+    return sink;
+
+  delete sink;
+  return nullptr;
+}
+
 
 bool CAESinkPi::Initialize(AEAudioFormat &format, std::string &device)
 {
@@ -185,17 +193,26 @@ bool CAESinkPi::Initialize(AEAudioFormat &format, std::string &device)
   g_RBP.Initialize();
 
   /* if we are raw need to let gpu know */
-  m_passthrough = AE_IS_RAW(format.m_dataFormat);
+  m_passthrough = format.m_dataFormat == AE_FMT_RAW;
 
   m_initDevice = device;
   m_initFormat = format;
 
+  const std::string audioDevice = CServiceBroker::GetSettingsComponent()->GetSettings()->GetString(CSettings::SETTING_AUDIOOUTPUT_AUDIODEVICE);
+
+  if (m_passthrough || audioDevice == "PI:HDMI")
+    m_output = AESINKPI_HDMI;
+  else if (audioDevice == "PI:Analogue")
+    m_output = AESINKPI_ANALOGUE;
+  else if (audioDevice == "PI:Both")
+    m_output = AESINKPI_BOTH;
+  else if (audioDevice == "Default")
+    m_output = AESINKPI_HDMI;
+  else assert(0);
+
   // analogue only supports stereo
-  if (CSettings::Get().GetString("audiooutput.audiodevice") == "PI:Analogue" || CSettings::Get().GetString("audiooutput.audiodevice") == "PI:Both")
-  {
+  if (m_output == AESINKPI_ANALOGUE || m_output == AESINKPI_BOTH)
     format.m_channelLayout = AE_CH_LAYOUT_2_0;
-    m_passthrough = false;
-  }
 
   // setup for a 50ms sink feed from SoftAE
   if (format.m_dataFormat != AE_FMT_FLOATP && format.m_dataFormat != AE_FMT_FLOAT &&
@@ -207,23 +224,26 @@ bool CAESinkPi::Initialize(AEAudioFormat &format, std::string &device)
   format.m_frameSize     = sample_size * channels;
   format.m_sampleRate    = std::max(8000U, std::min(192000U, format.m_sampleRate));
   format.m_frames        = format.m_sampleRate * AUDIO_PLAYBUFFER / NUM_OMX_BUFFERS;
-  format.m_frameSamples  = format.m_frames * channels;
-
-  SetAudioProps(m_passthrough, GetChannelMap(format, m_passthrough));
 
   m_format = format;
   m_sinkbuffer_sec_per_byte = 1.0 / (double)(m_format.m_frameSize * m_format.m_sampleRate);
 
   CLog::Log(LOGDEBUG, "%s:%s Format:%d Channels:%d Samplerate:%d framesize:%d bufsize:%d bytes/s=%.2f dest=%s", CLASSNAME, __func__,
                 m_format.m_dataFormat, channels, m_format.m_sampleRate, m_format.m_frameSize, m_format.m_frameSize * m_format.m_frames, 1.0/m_sinkbuffer_sec_per_byte,
-                CSettings::Get().GetString("audiooutput.audiodevice").c_str());
+                audioDevice.c_str());
+
+  // magic value used when omxplayer is playing - want sink to be disabled
+  if (m_passthrough && m_format.m_streamInfo.m_sampleRate == 16000)
+    return true;
+
+  SetAudioProps(m_passthrough, GetChannelMap(m_format.m_channelLayout, m_passthrough));
 
   OMX_ERRORTYPE omx_err   = OMX_ErrorNone;
 
   if (!m_omx_render.Initialize("OMX.broadcom.audio_render", OMX_IndexParamAudioInit))
     CLog::Log(LOGERROR, "%s::%s - m_omx_render.Initialize omx_err(0x%08x)", CLASSNAME, __func__, omx_err);
 
-  if (CSettings::Get().GetString("audiooutput.audiodevice") == "PI:Both")
+  if (m_output == AESINKPI_BOTH)
   {
     if (!m_omx_splitter.Initialize("OMX.broadcom.audio_splitter", OMX_IndexParamAudioInit))
       CLog::Log(LOGERROR, "%s::%s - m_omx_splitter.Initialize omx_err(0x%08x)", CLASSNAME, __func__, omx_err);
@@ -427,8 +447,10 @@ double CAESinkPi::GetCacheTotal()
 unsigned int CAESinkPi::AddPackets(uint8_t **data, unsigned int frames, unsigned int offset)
 {
   if (!m_Initialized || !m_omx_output || !frames)
+  {
+    Sleep(10);
     return frames;
-
+  }
   OMX_ERRORTYPE omx_err   = OMX_ErrorNone;
   OMX_BUFFERHEADERTYPE *omx_buffer = NULL;
 
@@ -465,7 +487,10 @@ unsigned int CAESinkPi::AddPackets(uint8_t **data, unsigned int frames, unsigned
   }
   omx_err = m_omx_output->EmptyThisBuffer(omx_buffer);
   if (omx_err != OMX_ErrorNone)
+  {
     CLog::Log(LOGERROR, "%s:%s frames=%d err=%x", CLASSNAME, __func__, frames, omx_err);
+    m_omx_output->DecoderEmptyBufferDone(m_omx_output->GetComponent(), omx_buffer);
+  }
   m_submitted++;
   GetDelay(status);
   delay = status.GetDelay();
@@ -488,6 +513,7 @@ void CAESinkPi::EnumerateDevicesEx(AEDeviceInfoList &list, bool force)
 {
   m_info.m_channels.Reset();
   m_info.m_dataFormats.clear();
+  m_info.m_streamTypes.clear();
   m_info.m_sampleRates.clear();
 
   m_info.m_deviceType = AE_DEVTYPE_HDMI;
@@ -506,14 +532,21 @@ void CAESinkPi::EnumerateDevicesEx(AEDeviceInfoList &list, bool force)
   m_info.m_dataFormats.push_back(AE_FMT_FLOATP);
   m_info.m_dataFormats.push_back(AE_FMT_S32NEP);
   m_info.m_dataFormats.push_back(AE_FMT_S16NEP);
-  m_info.m_dataFormats.push_back(AE_FMT_AC3);
-  m_info.m_dataFormats.push_back(AE_FMT_DTS);
-  m_info.m_dataFormats.push_back(AE_FMT_EAC3);
 
+  m_info.m_streamTypes.push_back(CAEStreamInfo::STREAM_TYPE_AC3);
+  m_info.m_streamTypes.push_back(CAEStreamInfo::STREAM_TYPE_EAC3);
+  m_info.m_streamTypes.push_back(CAEStreamInfo::STREAM_TYPE_DTSHD_CORE);
+  m_info.m_streamTypes.push_back(CAEStreamInfo::STREAM_TYPE_DTS_2048);
+  m_info.m_streamTypes.push_back(CAEStreamInfo::STREAM_TYPE_DTS_1024);
+  m_info.m_streamTypes.push_back(CAEStreamInfo::STREAM_TYPE_DTS_512);
+  m_info.m_dataFormats.push_back(AE_FMT_RAW);
+
+  m_info.m_wantsIECPassthrough = true;
   list.push_back(m_info);
 
   m_info.m_channels.Reset();
   m_info.m_dataFormats.clear();
+  m_info.m_streamTypes.clear();
   m_info.m_sampleRates.clear();
 
   m_info.m_deviceType = AE_DEVTYPE_PCM;
@@ -530,10 +563,12 @@ void CAESinkPi::EnumerateDevicesEx(AEDeviceInfoList &list, bool force)
   m_info.m_dataFormats.push_back(AE_FMT_S32NEP);
   m_info.m_dataFormats.push_back(AE_FMT_S16NEP);
 
+  m_info.m_wantsIECPassthrough = true;
   list.push_back(m_info);
 
   m_info.m_channels.Reset();
   m_info.m_dataFormats.clear();
+  m_info.m_streamTypes.clear();
   m_info.m_sampleRates.clear();
 
   m_info.m_deviceType = AE_DEVTYPE_PCM;
@@ -550,7 +585,6 @@ void CAESinkPi::EnumerateDevicesEx(AEDeviceInfoList &list, bool force)
   m_info.m_dataFormats.push_back(AE_FMT_S32NEP);
   m_info.m_dataFormats.push_back(AE_FMT_S16NEP);
 
+  m_info.m_wantsIECPassthrough = true;
   list.push_back(m_info);
 }
-
-#endif

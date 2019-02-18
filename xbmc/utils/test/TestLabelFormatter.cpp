@@ -1,26 +1,16 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
+#include "ServiceBroker.h"
 #include "utils/LabelFormatter.h"
 #include "filesystem/File.h"
 #include "settings/Settings.h"
+#include "settings/SettingsComponent.h"
 #include "FileItem.h"
 
 #include "test/TestUtils.h"
@@ -33,20 +23,21 @@ class TestLabelFormatter : public testing::Test
 protected:
   TestLabelFormatter()
   {
+    //! @todo implement
     /* TODO
-    CSettingsCategory* fl = CSettings::Get().AddCategory(7, "filelists", 14081);
-    CSettings::Get().AddBool(fl, "filelists.showparentdiritems", 13306, true);
-    CSettings::Get().AddBool(fl, "filelists.showextensions", 497, true);
-    CSettings::Get().AddBool(fl, "filelists.ignorethewhensorting", 13399, true);
-    CSettings::Get().AddBool(fl, "filelists.allowfiledeletion", 14071, false);
-    CSettings::Get().AddBool(fl, "filelists.showaddsourcebuttons", 21382,  true);
-    CSettings::Get().AddBool(fl, "filelists.showhidden", 21330, false);
+    CSettingsCategory* fl = CServiceBroker::GetSettingsComponent()->GetSettings()->AddCategory(7, "filelists", 14081);
+    CServiceBroker::GetSettingsComponent()->GetSettings()->AddBool(fl, CSettings::SETTING_FILELISTS_SHOWPARENTDIRITEMS, 13306, true);
+    CServiceBroker::GetSettingsComponent()->GetSettings()->AddBool(fl, CSettings::SETTING_FILELISTS_SHOWEXTENSIONS, 497, true);
+    CServiceBroker::GetSettingsComponent()->GetSettings()->AddBool(fl, CSettings::SETTING_FILELISTS_IGNORETHEWHENSORTING, 13399, true);
+    CServiceBroker::GetSettingsComponent()->GetSettings()->AddBool(fl, CSettings::SETTING_FILELISTS_ALLOWFILEDELETION, 14071, false);
+    CServiceBroker::GetSettingsComponent()->GetSettings()->AddBool(fl, CSettings::SETTING_FILELISTS_SHOWADDSOURCEBUTTONS, 21382,  true);
+    CServiceBroker::GetSettingsComponent()->GetSettings()->AddBool(fl, CSettings::SETTING_FILELISTS_SHOWHIDDEN, 21330, false);
     */
   }
 
-  ~TestLabelFormatter()
+  ~TestLabelFormatter() override
   {
-    CSettings::Get().Unload();
+    CServiceBroker::GetSettingsComponent()->GetSettings()->Unload();
   }
 };
 
@@ -57,7 +48,7 @@ TEST_F(TestLabelFormatter, FormatLabel)
   LABEL_MASKS labelMasks;
   CLabelFormatter formatter("", labelMasks.m_strLabel2File);
 
-  ASSERT_TRUE((tmpfile = XBMC_CREATETEMPFILE("")));
+  ASSERT_NE(nullptr, (tmpfile = XBMC_CREATETEMPFILE("")));
   tmpfilepath = XBMC_TEMPFILEPATH(tmpfile);
 
   CFileItemPtr item(new CFileItem(tmpfilepath));
@@ -77,7 +68,7 @@ TEST_F(TestLabelFormatter, FormatLabel2)
   LABEL_MASKS labelMasks;
   CLabelFormatter formatter("", labelMasks.m_strLabel2File);
 
-  ASSERT_TRUE((tmpfile = XBMC_CREATETEMPFILE("")));
+  ASSERT_NE(nullptr, (tmpfile = XBMC_CREATETEMPFILE("")));
   tmpfilepath = XBMC_TEMPFILEPATH(tmpfile);
 
   CFileItemPtr item(new CFileItem(tmpfilepath));

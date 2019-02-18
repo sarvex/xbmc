@@ -1,29 +1,16 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
-
-#include "system.h"
 
 #include "FileOperationJob.h"
 #include "URL.h"
 #include "Util.h"
 #include "dialogs/GUIDialogExtendedProgressBar.h"
+#include "guilib/GUIComponent.h"
 #include "guilib/LocalizeStrings.h"
 #include "guilib/GUIWindowManager.h"
 #include "filesystem/Directory.h"
@@ -32,20 +19,16 @@
 #include "utils/log.h"
 #include "utils/StringUtils.h"
 #include "utils/URIUtils.h"
+#include "ServiceBroker.h"
 
-using namespace std;
 using namespace XFILE;
 
 CFileOperationJob::CFileOperationJob()
-  : m_action(ActionCopy),
-    m_items(),
+  : m_items(),
     m_strDestFile(),
     m_avgSpeed(),
     m_currentOperation(),
-    m_currentFile(),
-    m_displayProgress(false),
-    m_heading(0),
-    m_line(0)
+    m_currentFile()
 { }
 
 CFileOperationJob::CFileOperationJob(FileAction action, CFileItemList & items,
@@ -83,7 +66,7 @@ bool CFileOperationJob::DoWork()
   if (m_displayProgress && GetProgressDialog() == NULL)
   {
     CGUIDialogExtendedProgressBar* dialog =
-      (CGUIDialogExtendedProgressBar*)g_windowManager.GetWindow(WINDOW_DIALOG_EXT_PROGRESS);
+      CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogExtendedProgressBar>(WINDOW_DIALOG_EXT_PROGRESS);
     SetProgressBar(dialog->GetHandle(GetActionString(m_action)));
   }
 
@@ -131,18 +114,19 @@ bool CFileOperationJob::DoProcessFolder(FileAction action, const std::string& st
     return true;
   }
 
-  CLog::Log(LOGDEBUG,"FileManager, processing folder: %s",strPath.c_str());
   CFileItemList items;
   CDirectory::GetDirectory(strPath, items, "", DIR_FLAG_NO_FILE_DIRS | DIR_FLAG_GET_HIDDEN);
   for (int i = 0; i < items.Size(); i++)
   {
     CFileItemPtr pItem = items[i];
     pItem->Select(true);
-    CLog::Log(LOGDEBUG,"  -- %s",pItem->GetPath().c_str());
   }
 
   if (!DoProcess(action, items, strDestFile, fileOperations, totalTime))
+  {
+    CLog::Log(LOGERROR,"FileManager: error while processing folder: %s", strPath.c_str());
     return false;
+  }
 
   if (action == ActionMove)
   {
@@ -273,49 +257,34 @@ bool CFileOperationJob::CFileOperation::ExecuteOperation(CFileOperationJob *base
   {
     case ActionCopy:
     case ActionReplace:
-    {
-      CLog::Log(LOGDEBUG,"FileManager: copy %s -> %s\n", m_strFileA.c_str(), m_strFileB.c_str());
-
       bResult = CFile::Copy(m_strFileA, m_strFileB, this, &data);
-    }
-    break;
+      break;
 
     case ActionMove:
-    {
-      CLog::Log(LOGDEBUG,"FileManager: move %s -> %s\n", m_strFileA.c_str(), m_strFileB.c_str());
-
       if (CanBeRenamed(m_strFileA, m_strFileB))
         bResult = CFile::Rename(m_strFileA, m_strFileB);
       else if (CFile::Copy(m_strFileA, m_strFileB, this, &data))
         bResult = CFile::Delete(m_strFileA);
       else
         bResult = false;
-    }
-    break;
+      break;
 
     case ActionDelete:
-    {
-      CLog::Log(LOGDEBUG,"FileManager: delete %s\n", m_strFileA.c_str());
-
       bResult = CFile::Delete(m_strFileA);
-    }
-    break;
+      break;
 
     case ActionDeleteFolder:
-    {
-      CLog::Log(LOGDEBUG,"FileManager: delete folder %s\n", m_strFileA.c_str());
-
       bResult = CDirectory::Remove(m_strFileA);
-    }
-    break;
+      break;
 
     case ActionCreateFolder:
-    {
-      CLog::Log(LOGDEBUG,"FileManager: create folder %s\n", m_strFileA.c_str());
-
       bResult = CDirectory::Create(m_strFileA);
-    }
-    break;
+      break;
+
+    default:
+      CLog::Log(LOGERROR, "FileManager: unknown operation");
+      bResult = false;
+      break;
   }
 
   current += (double)m_time * opWeight;
@@ -331,18 +300,18 @@ inline bool CFileOperationJob::CanBeRenamed(const std::string &strFileA, const s
 #else
   if (URIUtils::IsHD(strFileA) && URIUtils::IsHD(strFileB))
     return true;
+  else if (URIUtils::IsSmb(strFileA) && URIUtils::IsSmb(strFileB)) {
+    CURL smbFileA(strFileA), smbFileB(strFileB);
+    return smbFileA.GetHostName() == smbFileB.GetHostName() &&
+           smbFileA.GetShareName() == smbFileB.GetShareName();
+  }
 #endif
   return false;
 }
 
-void CFileOperationJob::CFileOperation::Debug()
-{
-  printf("%i | %s > %s\n", m_action, m_strFileA.c_str(), m_strFileB.c_str());
-}
-
 bool CFileOperationJob::CFileOperation::OnFileCallback(void* pContext, int ipercent, float avgSpeed)
 {
-  DataHolder *data = (DataHolder *)pContext;
+  DataHolder *data = static_cast<DataHolder*>(pContext);
   double current = data->current + ((double)ipercent * data->opWeight * (double)m_time)/ 100.0;
 
   if (avgSpeed > 1000000.0f)

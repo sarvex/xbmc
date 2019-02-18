@@ -1,21 +1,9 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://xbmc.org
+ *  Copyright (C) 2005-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
  *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
  */
 
 #include "MusicFileDirectory.h"
@@ -28,13 +16,9 @@
 using namespace MUSIC_INFO;
 using namespace XFILE;
 
-CMusicFileDirectory::CMusicFileDirectory(void)
-{
-}
+CMusicFileDirectory::CMusicFileDirectory(void) = default;
 
-CMusicFileDirectory::~CMusicFileDirectory(void)
-{
-}
+CMusicFileDirectory::~CMusicFileDirectory(void) = default;
 
 bool CMusicFileDirectory::GetDirectory(const CURL& url, CFileItemList &items)
 {
@@ -50,7 +34,7 @@ bool CMusicFileDirectory::GetDirectory(const CURL& url, CFileItemList &items)
 
   for (int i=0; i<iStreams; ++i)
   {
-    std::string strLabel = StringUtils::Format("%s - %s %02.2i", strFileName.c_str(), g_localizeStrings.Get(554).c_str(), i+1);
+    std::string strLabel = StringUtils::Format("%s - %s %2.2i", strFileName.c_str(), g_localizeStrings.Get(554).c_str(), i+1);
     CFileItemPtr pItem(new CFileItem(strLabel));
     strLabel = StringUtils::Format("%s%s-%i.%s", strPath.c_str(), strFileName.c_str(), i+1, m_strExt.c_str());
     pItem->SetPath(strLabel);
